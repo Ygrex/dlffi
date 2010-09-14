@@ -1,0 +1,21 @@
+dlffi is a LUA wrapper for both libdl.so and libffi.so
+
+dlffi allows to use native C functions from dynamically linked libraries
+in LUA without need to (re)compile specific wrappers and writting any C code
+
+the library has been tested on x86 and x86_64 in Debian only, with help of
+valgrind
+
+
+files provided:
+
+* liblua_dlffi.c	- the library source
+* dlffi.lua		- the LUA module (no examples yet)
+* dlfcn.supp		- suppressions file for valgrind:
+				suppresses false positives due to libdl usage
+* mysql.lua		- wrapper for libmysqlclient.so without C code
+* test.lua		- example for mysql.lua
+* COPYLEFT		- license
+* README		- this readme
+* Makefile		- makefile
+
