@@ -4,6 +4,10 @@ local LIBMYSQL = "libmysqlclient.so.16";
 local dl = require("liblua_dlffi");
 assert(dl ~= nil, "unable to load liblua_dlffi");
 
+-- make 5.1 and 5.2 compatibility
+local unpack = unpack;
+if not unpack then unpack = table.unpack end;
+
 -- {{{ load library
 mysql_t = {
 	_MYSQL_FIELD = {

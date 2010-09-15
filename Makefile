@@ -1,8 +1,17 @@
-all: compile
-CA=-Wall -Wextra
-LUA_CFLAGS=-I/usr/include/lua5.1 -O2 -fPIC
+# location
+LUA_VERSION=5.1
+PREFIX=/usr/local
+DEST_LIBS=$(PREFIX)/lib/lua/$(LUA_VERSION)
+INCLUDES=/usr/include/lua$(LUA_VERSION)
+LUA_CFLAGS=-O2 -fPIC -I$(INCLUDES)
+# uncomment the following line to declare lua_objlen in LUA 5.2
+#LUA_CFLAGS=-O2 -fPIC -Dlua_objlen=lua_rawlen
 LUA_LDFLAGS=-O -shared -fPIC
 
+#####
+
+all: compile
+CA=-Wall -Wextra
 compile: dlffi
 
 dlffi: liblua_dlffi.c
@@ -16,6 +25,7 @@ distclean:
 	rm liblua_dlffi.so
 
 install:
-	mkdir -p /usr/local/lib/lua/5.1/
-	cp -f liblua_dlffi.so /usr/local/lib/lua/5.1/
+	mkdir -p $(DEST_LIBS)
+	cp -f liblua_dlffi.so $(DEST_LIBS)
+	cp -f dlffi.lua $(DEST_LIBS)
 

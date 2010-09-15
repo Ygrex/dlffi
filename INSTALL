@@ -1,0 +1,7 @@
+slight modifications of Makefile may be necessary for LUA other then 5.1 and
+because of your distro's filesystem specifics
+
+make
+make install
+./test
+
