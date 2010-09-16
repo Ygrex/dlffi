@@ -1,16 +1,15 @@
-local LIBC = "libc.so.6";
 local LIBMYSQL = "libmysqlclient.so.16";
-
-local dl = require("liblua_dlffi");
-assert(dl ~= nil, "unable to load liblua_dlffi");
 
 -- make 5.1 and 5.2 compatibility
 local unpack = unpack;
 if not unpack then unpack = table.unpack end;
 
+local dl = require("dlffi");
+
 -- {{{ load library
-mysql_t = {
-	_MYSQL_FIELD = {
+local mysql_t = dl.Dlffi_t:new(
+	"MYSQL_FIELD",
+	{
 		dl.ffi_type_pointer,	-- char *name
 		dl.ffi_type_pointer,	-- char *org_name
 		dl.ffi_type_pointer,	-- char *table
@@ -32,9 +31,8 @@ mysql_t = {
 		dl.ffi_type_uint,	-- unsigned int charsetnr
 		dl.ffi_type_uint,	-- enum enum_field_types type
 		dl.ffi_type_pointer,	-- void *extension
-	},
-}
-mysql_t.MYSQL_FIELD = dl.type_init(mysql_t._MYSQL_FIELD);
+	}
+);
 
 local mysql = {
 {
@@ -183,196 +181,154 @@ end;
 
 -- these functions return sub-objects
 local mysql_bind = {
-	["use_result"] = true,
-	["store_result"] = true,
+	["use_result"] = mysql.free_result,
+	["store_result"] = mysql.free_result,
 }
 
 -- }}} load library
 
-Mysql = {};
+local Mysql = { _type = "object" }
 
--- {{{ Mysql:new -- constructor
+-- {{{ Mysql:new(bool) -- constructor
+--	server_end - if mysql_server_end() must be called by GC
 function Mysql:new(server_end)
-	--[[
-	server_end - if true, then mysql_library_end()
-		will be executed in __gc;
-		also, mysql specific types will be deallocated;
-	--]]
-	local o = {
-		gc = newproxy(true),
-		sql = mysql.init(dl.NULL),
-	};
-	if not o.gc or not o.sql then return nil end;
-	local function meta_sql(t, v)
-		local func = mysql[v];
-		if func == nil then return nil end;
-		if mysql_bind[v] ~= nil then
-			return function(...)
-				-- sub-object will be returned
-				local obj = {};
-				obj.val = func(
-					t.sql,
-					select(2, ...)
-				);
-				return setmetatable(obj, {
-					__index = meta_sql
-				});
-			end;
-		else
-			if t.val == nil then
-				-- use the main connector
-				return function(...)
-					return func(
-						t.sql,
-						select(2, ...)
-					);
-				end;
-			else
-				-- use sub-object
-				return function(...)
-					return func(
-						t.val,
-						select(2, ...)
-					);
-				end;
-			end;
+	local gc = mysql.close;
+	if server_end then
+		gc = function(o)
+			mysql.close(o);
+			mysql.server_end();
 		end;
 	end;
-	setmetatable(o, {
-		__index = function (t, v)
-			local f = rawget(t, v);
-			if f then return f end;
-			local f = self[v];
-			if f then return f end;
-			return meta_sql(t, v);
-		end
-	});
-	o.purge = server_end;
-	getmetatable(o.gc).__gc = function ()
-		if o.sql then
-			mysql.close(o.sql);
-			o.sql = nil;
-		end;
-		if o.purge then o:library_end() end;
-	end;
+	local o = dl.Dlffi:new(
+		{ self,	mysql},
+		mysql.init(dl.NULL),
+		gc,
+		mysql_bind
+	);
 	return o;
 end;
--- }}}
+-- }}} Mysql:new
 
--- {{{ Mysql:real_escape_string(stmt)
-function Mysql:real_escape_string(stmt)
-	if stmt == nil then return "" end;
-	local buf = dl.dlffi_Pointer(1 + 2 * #stmt, true);
-	if buf == nil then return end;
-	local r = mysql.real_escape_string(
-		self.sql,
-		buf,
-		stmt,
-		#stmt
-	);
-	if r == nil then return nil end;
-	return buf:tostring(tonumber(r));
-end;
--- }}} Mysql:real_escape_string
-
--- {{{ Mysql:query(stmt[, use_result])
--- call mysql_use_result() if the second parameter is true
--- otherwise mysql_store_result()
+-- {{{ MYSQL_RES * Mysql:query(char * [, bool] )
+--[[
+	override mysql_query combining both mysql_real_query()
+	and mysql_store_result()
+	return the result value of the later function
+	stmt	- query statement
+	bool	- whether to use mysql_use_result() instead
+--]]
 function Mysql:query(stmt, use_result)
 	local malloc = "memory allocation error";
 	local r, e = self:real_query(stmt, #stmt);
 	if not r then return nil, e and e or malloc end;
 	if tonumber(r) ~= 0 then
-		return nil, "mysql_real_query() == " .. tostring(r);
+		return nil, "mysql_real_query() returned " .. tostring(r);
 	end;
-	local res, e;
-	if use_result then
-		res, e = self:use_result();
+	if (use_result) then
+		r, e = self:use_result();
+		if not r then
+			-- mysql_use_result must always return non-NULL
+			-- if no error
+			return nil, e;
+		end;
 	else
-		res, e = self:store_result();
+		r, e = self:store_result();
+		if not r then
+			-- r is empty if mysql_store_result's returned NULL
+			-- it is not necessary an error
+			return;
+		end;
 	end;
-	if not res then return nil, e and e or malloc end;
-	if res == dl.NULL then return nil, "mysql_use_result() == NULL" end;
-	local ptr, e = dl.dlffi_Pointer(res.val);
-	if not ptr then
-		res:free_result();
-		return nil, e and e or malloc;
-	end;
-	ptr:set_gc(function () res:free_result() end);
-	res.val = ptr;
-	return res;
+	-- something has been returned
+	return r;
 end;
 -- }}} Mysql:query
 
--- {{{ Mysql:library_end(Mysql)
-function Mysql:library_end()
-	mysql.server_end();
-	for k, v in pairs(mysql_t) do
-		if type(v) == "userdata" then
-			dl.type_free(v);
-			mysql_t[k] = nil;
-		end;
-	end;
+-- {{{ char * Mysql:real_escape_string(char *)
+function Mysql:real_escape_string(stmt)
+	-- override mysql_real_escape_string()
+	if not stmt then return "" end;
+	local buf = dl.dlffi_Pointer(1 + 2 * #stmt, true);
+	if buf == nil then return nil, "dlffi_Pointer() failed" end;
+	local r = mysql.real_escape_string(
+		self._val,
+		buf,
+		stmt,
+		#stmt
+	);
+	if r == nil then return nil, "mysql_real_escape_string() failed" end;
+	return buf:tostring(tonumber(r));
 end;
--- }}} Mysql:library_end
+-- }}} Mysql:real_escape_string
 
--- {{{ mysql_fetch_assoc(MYSQL_RES *)
-function mysql.fetch_assoc(res)
-	local num = mysql.num_fields(res);
-	if num == nil then
-		return nil, "mysql_num_fields() failed";
-	end;
+-- {{{ Mysql:fetch_assoc()
+function Mysql:fetch_assoc()
+	-- self envelops (MYSQL_RES *) here!
+	-- get the row firstly
+	local row = dl.dlffi_Pointer(self:fetch_row());
+	if not row then return nil, "mysql_fetch_row() failed" end;
+	-- get the number of fields in the record
+	local num = self:num_fields();
+	if num == nil then return nil, "mysql_num_fields() failed" end;
 	num = tonumber(num);
+	-- get columns from the record
 	local col = {};
-	local fields = mysql.fetch_fields(res);
-	if fields == dl.NULL then
-		return nil, "mysql_fetch_fields() failed";
-	end;
-	fields = dl.dlffi_Pointer(fields);
+	local fields = dl.dlffi_Pointer(self:fetch_fields());
+	if not fields then return nil, "mysql_fetch_fields() failed" end;
 	for i = 1, num, 1 do
-		local struct = fields:index(i, mysql_t.MYSQL_FIELD);
-		if struct == nil then
+		local struct = fields:index(i, mysql_t["MYSQL_FIELD"]);
+		if not struct then
 			return nil,
-				[=[error occured when accessing ]=] ..
-				[=[MYSQL_FIELD's element #]=] ..
+				[[Error occured when accessing ]] ..
+				[[MYSQL_FIELD's element #]] ..
 				tostring(i);
 		end;
-		local name = dl.type_element(
-			struct,
-			mysql_t.MYSQL_FIELD,
-			1
+		local name = dl.dlffi_Pointer(
+			dl.type_element(
+				struct,
+				mysql_t["MYSQL_FIELD"],
+				1
+			)
 		);
-		col[i] = dl.dlffi_Pointer(name):tostring();
-	end;
-	local row = mysql.fetch_row(res);
-	if row == dl.NULL then
-		return nil, "mysql_fetch_row() failed";
-	end;
-	row = dl.dlffi_Pointer(row);
-	local lengths = mysql.fetch_lengths(res);
-	if lengths == nil or lengths == dl.NULL then
-		return nil, "mysql_fetch_lengths() failed";
-	end;
-	lengths = dl.dlffi_Pointer(lengths);
-	local value = {};
-	for i = 1, num, 1 do
-		local len = lengths:index(i, dl.ffi_type_ulong);
-		if len == nil then
+		if name == nil then
 			return nil,
-				"error occured when accessing " ..
-				"length of the field #" ..
+				[[Error occured when accessing ]] ..
+				[["name" property of ]] ..
+				[[MYSQL_FIELD's element #]] ..
 				tostring(i);
 		end;
+		-- the column name is known here, remember it
+		col[i] = name:tostring();
+	end;
+	-- fetch fields' lengths
+	local lengths = dl.dlffi_Pointer(self:fetch_lengths());
+	if not lengths then return nil, "mysql_fetch_lengths() failed" end;
+	local value = {};
+	-- iterate through columns
+	for i = 1, num, 1 do
+		-- length of the current field
+		local len = lengths:index(i, dl.ffi_type_ulong);
+		if not len then
+			return nil,
+				[[Error occured when accessing ]] ..
+				[[length of the field #]] ..
+				tostring(i);
+		end;
+		-- get the field value
 		local r = row:index(i);
 		if r == nil then
 			return nil,
-				"error occured when accessing " ..
-				"value of the field #" ..
+				[[Error occured when accessing ]] ..
+				[[value of the field #]] ..
 				tostring(i);
 		end;
+		-- remember the field's value
 		value[col[i]] = r:tostring(len);
 	end;
+	-- here "value" is an associative array or an empty table
 	return value;
 end;
--- }}} mysql_fetch_assoc(MYSQL_RES *)
+-- }}} Mysql:fetch_assoc
+
+return { ["Mysql"] = Mysql, ["mysql_t"] = mysql_t, ["dl"] = dl, ["mysql"] = mysql };
 
