@@ -8,35 +8,36 @@
 	fit the sample code for your very case;
 --]]
 
-local dl = require("liblua_dlffi");
-require("mysql");
+for k,v in pairs( require("mysql") ) do _G[k] = v end;
 
 function main()
 	-- run a constructor
 	local sql = Mysql:new(true);
 	assert(sql ~= nil, "cannot initialize ODBC");
---[[
--- setrlimit on RLIMIT_AS
+--[[ uncomment the following block to limit the Address Space
+-- load [sg]etrlimit functions
 for _, v in ipairs { "setrlimit", "getrlimit" } do
 	_G[v] = dl.load("libc.so.6", v, dl.ffi_type_sint,
 		{ dl.ffi_type_sint, dl.ffi_type_pointer }
 	);
 	assert(_G[v] ~= nil, "Unable to load " .. v);
 end;
-_struct_rlimit = { dl.ffi_type_ulong, dl.ffi_type_ulong };
-struct_rlimit = dl.type_init(_struct_rlimit);
-assert(struct_rlimit ~= nil, "Cannot initialize type");
-local buf = dl.dlffi_Pointer(dl.sizeof(struct_rlimit), true);
+-- declare a rlimit structure
+local struct = dl.Dlffi_t:new(
+	"rlimit",
+	{ dl.ffi_type_ulong, dl.ffi_type_ulong }
+);
+assert(struct ~= nil, "Cannot initialize type");
+local buf = dl.dlffi_Pointer(dl.sizeof(struct["rlimit"]), true);
 assert(buf ~= nil, "buffer malloc() failed");
-dl.type_element(buf, struct_rlimit, 1, 5267455);
-dl.type_element(buf, struct_rlimit, 2, 5267455);
+dl.type_element(buf, struct["rlimit"], 1, 5267460);
+dl.type_element(buf, struct["rlimit"], 2, 5267460);
 local r = setrlimit(9, buf);
 assert(tonumber(r) == 0, "setrlimit() failed");
 local r = getrlimit(9, buf);
 assert(tonumber(r) == 0, "getrlimit() failed");
-print("soft:", dl.type_element(buf, struct_rlimit, 1));
-print("hard:", dl.type_element(buf, struct_rlimit, 2));
-dl.type_free(struct_rlimit);
+print("soft:", dl.type_element(buf, struct["rlimit"], 1));
+print("hard:", dl.type_element(buf, struct["rlimit"], 2));
 --]]
 	-- connect to a test server
 	local con = sql:real_connect(
@@ -62,14 +63,15 @@ dl.type_free(struct_rlimit);
 			COLLATE=utf8_unicode_ci
 			COMMENT='a sample DB'
 	]=]
-	local r = sql:query(que);
-	assert(r ~= nil, "Unable to create `sample` table");
+	local r, e = sql:query(que);
+	assert((r == nil) and (e == nil),
+		"Unable to create `sample` table: " .. tostring(e));
 	-- truncate it in case it has been here
 	local que = [=[TRUNCATE `sample`]=];
-	local r = sql:query(que);
+	local r, e = sql:query(que);
 	assert(
-		r ~= nil,
-		"TRUNCATE `sample` failed with " .. tostring(r)
+		(r == nil) and (e == nil),
+		"TRUNCATE `sample` failed with: " .. tostring(e)
 	);
 	-- fill the `sample` table with 1000 records
 	for i = 1, 1000, 1 do
@@ -95,12 +97,13 @@ dl.type_free(struct_rlimit);
 				) ..
 			[=["
 		]=];
-		local r = sql:query(que);
+		local r, e = sql:query(que);
 		assert(
-			r ~= nil,
+			(r == nil) and (e == nil),
 			"INSERT #" .. tostring(i) ..
-			" failed with " .. tostring(r)
+			" failed with " .. tostring(e)
 		);
+		collectgarbage();
 	end;
 	-- read the data back
 	local que = [=[
@@ -125,6 +128,7 @@ dl.type_free(struct_rlimit);
 		-- replace \0 with something printable
 		r["name"] = string.gsub(r["name"], "%z", "\\0");
 		print(r["id"], r["name"], r["misc"]);
+		collectgarbage();
 	until false;
 end;
 
