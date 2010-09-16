@@ -1000,6 +1000,22 @@ int luaopen_liblua_dlffi(lua_State *L) {
 	}
 	luaL_register(L, "dlffi", liblua_dlffi);
 	/* {{{ ffi constants */
+	lua_pushlightuserdata(L, &ffi_type_uint8);
+	lua_setfield(L, -2, "ffi_type_uint8");
+	lua_pushlightuserdata(L, &ffi_type_sint8);
+	lua_setfield(L, -2, "ffi_type_sint8");
+	lua_pushlightuserdata(L, &ffi_type_uint16);
+	lua_setfield(L, -2, "ffi_type_uint16");
+	lua_pushlightuserdata(L, &ffi_type_sint16);
+	lua_setfield(L, -2, "ffi_type_sint16");
+	lua_pushlightuserdata(L, &ffi_type_uint32);
+	lua_setfield(L, -2, "ffi_type_uint32");
+	lua_pushlightuserdata(L, &ffi_type_sint32);
+	lua_setfield(L, -2, "ffi_type_sint32");
+	lua_pushlightuserdata(L, &ffi_type_uint64);
+	lua_setfield(L, -2, "ffi_type_uint64");
+	lua_pushlightuserdata(L, &ffi_type_sint64);
+	lua_setfield(L, -2, "ffi_type_sint64");
 	lua_pushlightuserdata(L, &ffi_type_uchar);
 	lua_setfield(L, -2, "ffi_type_uchar");
 	lua_pushlightuserdata(L, &ffi_type_schar);
