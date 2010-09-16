@@ -10,7 +10,8 @@ valgrind
 files provided:
 
 * liblua_dlffi.c	- the library source
-* dlffi.lua		- the LUA module (no examples yet)
+* dlffi.lua		- the LUA module; use this module instead of direct
+				liblua_dlffi.so linking
 * dlfcn.supp		- suppressions file for valgrind:
 				suppresses false positives due to libdl usage
 * mysql.lua		- wrapper for libmysqlclient.so without C code
