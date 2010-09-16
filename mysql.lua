@@ -168,6 +168,14 @@ local mysql = {
 		dl.ffi_type_pointer,	-- obj
 	}
 },
+{
+	"autocommit",
+	dl.ffi_type_sint,
+	{
+		dl.ffi_type_pointer,	-- obj
+		dl.ffi_type_sint,	-- mode
+	}
+},
 }
 
 for _, v in ipairs(mysql) do

@@ -50,6 +50,9 @@ print("hard:", dl.type_element(buf, struct["rlimit"], 2));
 		0
 	);
 	assert(con ~= dl.NULL, "unable to connect");
+	-- get prepared to use transactions
+	local r, e = sql:autocommit(0);
+	assert(r == 0, e and e or "mysql_auto_commit() failed");
 	-- create a `sample` table
 	local que = [=[
 		CREATE TABLE IF NOT EXISTS `sample` (
@@ -66,6 +69,9 @@ print("hard:", dl.type_element(buf, struct["rlimit"], 2));
 	local r, e = sql:query(que);
 	assert((r == nil) and (e == nil),
 		"Unable to create `sample` table: " .. tostring(e));
+	local r, e = sql:query("BEGIN");
+	assert((r == nil) and (e == nil),
+		"Transaction is not started: " .. tostring(e));
 	-- truncate it in case it has been here
 	local que = [=[TRUNCATE `sample`]=];
 	local r, e = sql:query(que);
@@ -105,6 +111,9 @@ print("hard:", dl.type_element(buf, struct["rlimit"], 2));
 		);
 		collectgarbage();
 	end;
+	local r, e = sql:query("COMMIT");
+	assert((r == nil) and (e == nil),
+		"Transaction is not committed: " .. tostring(e));
 	-- read the data back
 	local que = [=[
 		SELECT `id`, `name`, `misc`
