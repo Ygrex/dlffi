@@ -14,6 +14,7 @@ function Dlffi:new(api, init, gc, spec)
 	if init == nil or init == dl.NULL then
 		return nil, "Bad initial value specified";
 	end;
+	if not spec then spec = {} end;
 	if gc ~= nil then
 		t = getmetatable(gc);
 		if t ~= nil then
