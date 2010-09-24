@@ -177,7 +177,9 @@ inline void *type_write(lua_State *L, int idx, ffi_type *type, void *dst)
 		if (type != &ffi_type_pointer) return NULL;
 		size_t l;
 		char *c = (char *)lua_tolstring(L, idx, &l);
-		val_u = (void *)strndup(c, l);
+		val_u = malloc(l + 1);
+		if (!val_u) return NULL;
+		memcpy(val_u, c, l + 1);
 		len = sizeof(void *);
 		u = &val_u;
 		break;
@@ -629,104 +631,6 @@ static int dlffi_run(lua_State *L) {
 		argc -= 1;
 		argv[argc] = malloc(o->types[argc]->size);
 		if (!argv[argc]) return raise_error(L, NULL, argc, argv);
-		/*
-		size_t len = 0;	// length of a LUA type
-		void *u = NULL;	// subj to push
-		// supported LUA types
-		int val_i;
-		lua_Integer val_I;
-		void *val_u;
-		lua_Number val_n;
-		switch (lua_type(L, argc + 2)) {
-		case LUA_TBOOLEAN:
-			val_i = lua_toboolean(L, argc + 2);
-			len = sizeof(int);
-			u = &val_i;
-			break;
-		case LUA_TLIGHTUSERDATA:
-			if (o->types[argc] != &ffi_type_pointer) {
-				// incompatible type
-				return raise_error(L,
-					"pointer expected",
-					argc,
-					argv
-				);
-			}
-			val_u = lua_touserdata(L, argc + 2);
-			len = sizeof(void *);
-			u = &val_u;
-			break;
-		case LUA_TUSERDATA:
-			if ( lua_checkstack(L, 2) == 0 ) return 0;
-			if (lua_getmetatable(L, argc + 2)) {
-				lua_getfield(L,
-					LUA_REGISTRYINDEX,
-					"dlffi_Function"
-				);
-				if (lua_rawequal(L, -1, -2)) {
-				val_u = luaL_checkudata(L,
-					argc + 2,
-					"dlffi_Function"
-				);
-				val_u = ((dlffi_Function *)val_u);
-				if (((dlffi_Function *)val_u)->ref != LUA_REFNIL) {
-					val_u = *(FFI_FN(((dlffi_Function *)val_u)->dlsym));
-				} else val_u = ((dlffi_Function *)val_u)->dlsym;
-				} else {
-				val_u = (dlffi_check_Pointer(L, argc + 2))->pointer;
-				}
-				lua_pop(L, 2);
-			} else {
-				return raise_error(L,
-					"incorrect userdata",
-					argc,
-					argv
-				);
-			}
-			len = sizeof(void *);
-			u = &val_u;
-			break;
-		case LUA_TNUMBER:
-			if (
-				o->types[argc] == &ffi_type_float ||
-				o->types[argc] == &ffi_type_double ||
-				o->types[argc] == &ffi_type_longdouble
-			) {
-				val_n = lua_tonumber(L, argc + 2);
-				len = sizeof(lua_Number);
-				u = &val_n;
-			} else {
-				val_I = lua_tointeger(L, argc + 2);
-				len = sizeof(lua_Integer);
-				u = &val_I;
-			}
-			break;
-		case LUA_TSTRING:
-			if (o->types[argc] != &ffi_type_pointer) {
-				// incompatible type
-				return raise_error(L,
-					"pointer expected",
-					argc,
-					argv
-				);
-			}
-			size_t l;
-			char *c = (char *)lua_tolstring(L, argc + 2, &l);
-			val_u = (void *)strndup(c, l);
-			len = sizeof(void *);
-			u = &val_u;
-			break;
-		default:
-			if ( lua_checkstack(L, 2) == 0 ) return 0;
-			lua_pushnil(L);
-			lua_pushfstring(L,
-				"passed #%d argument value type "
-				"is not supported (%d)",
-				argc + 1, lua_type(L, argc + 2)
-			);
-			return 2;
-		}
-		write_value(argv[argc], u, o->types[argc]->size, len); */
 		void *u = type_write(
 			L, argc + 2, o->types[argc], argv[argc]
 		);
