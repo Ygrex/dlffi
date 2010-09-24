@@ -715,6 +715,22 @@ static int l_dlffi_Pointer(lua_State *L) {
 }
 /* }}} dlffi_Pointer */
 
+/* {{{ dlffi_Pointer_copy(void *) */
+//	make a copy of the given pointer
+static int l_dlffi_Pointer_copy(lua_State *L) {
+	dlffi_Pointer *p = dlffi_check_Pointer(L, 1);
+	if (lua_checkstack(L, 2) == 0) return 0;
+	dlffi_Pointer *o = lua_newuserdata(L, sizeof(dlffi_Pointer));
+	if (!o) return 0;
+	o->pointer = p->pointer;
+	luaL_getmetatable(L, "dlffi_Pointer");
+	o->gc = 0;
+	o->ref = LUA_REFNIL;
+	lua_setmetatable(L, -2);
+	return 1;
+}
+/* }}} dlffi_Pointer_copy */
+
 /* {{{ void dlffi_gc(dlffi_Function *) */
 static int dlffi_gc(lua_State *L) {
 	dlffi_Function *o = lua_touserdata(L, 1);
@@ -868,6 +884,7 @@ static const struct luaL_reg liblua_dlffi_Pointer_m [] = {
 	{"index", l_dlffi_Pointer_index},
 	{"tostring", l_dlffi_Pointer_tostring},
 	{"set_gc", l_dlffi_Pointer_set_gc},
+	{"copy", l_dlffi_Pointer_copy},
 	{NULL, NULL}
 };
 
