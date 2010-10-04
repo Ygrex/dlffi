@@ -763,6 +763,36 @@ static int dlffi_Pointer_eq(lua_State *L) {
 }
 /* }}} dlffi_Pointer_eq */
 
+/* {{{ void dlffi_Pointer_sub(dlffi_Pointer) */
+static int dlffi_Pointer_sub(lua_State *L) {
+	dlffi_Pointer *o = dlffi_check_Pointer(L, 1);
+	if (!o) return 0;
+	int t = lua_type(L, 2);
+	if ( lua_checkstack(L, 1) == 0 ) return 0;
+	if (t == LUA_TLIGHTUSERDATA) {
+		lua_pushnumber(
+			L,
+			(lua_Number)
+			(
+			(size_t)(o->pointer) -
+			(size_t)lua_touserdata(L, 2)
+			)
+		);
+	} else if (t == LUA_TUSERDATA) {
+		dlffi_Pointer *r = dlffi_check_Pointer(L, 2);
+		lua_pushnumber(
+			L,
+			(lua_Number)
+			(
+			(size_t)(o->pointer) -
+			(size_t)(r->pointer)
+			)
+		);
+	} else return 0;
+	return 1;
+}
+/* }}} dlffi_Pointer_sub */
+
 /* {{{ void dlffi_Pointer_index(dlffi_Pointer) */
 static int l_dlffi_Pointer_index(lua_State *L) {
 	dlffi_Pointer *o = dlffi_check_Pointer(L, 1);
@@ -813,10 +843,13 @@ static int l_dlffi_Pointer_tostring(lua_State *L) {
 	if (! o->pointer) {
 		lua_pushstring(L, "");
 	} else {
-		lua_Integer len = lua_tointeger(L, 2);
-		if (len > 0) {
+		if (lua_type(L, 2) == LUA_TNUMBER) {
+			lua_Integer len = lua_tointeger(L, 2);
+			if (len < 0) return 0;
 			lua_pushlstring(L, (const char *) o->pointer, len);
-		} else lua_pushstring(L, (const char *) o->pointer);
+		} else {
+			lua_pushstring(L, (const char *) o->pointer);
+		}
 	}
 	return 1;
 }
@@ -912,6 +945,9 @@ int luaopen_liblua_dlffi(lua_State *L) {
 	lua_settable(L, -3);
 	lua_pushstring(L, "__eq");
 	lua_pushcfunction(L, dlffi_Pointer_eq);
+	lua_settable(L, -3);
+	lua_pushstring(L, "__sub");
+	lua_pushcfunction(L, dlffi_Pointer_sub);
 	lua_settable(L, -3);
 	lua_pushstring(L, "__gc");
 	lua_pushcfunction(L, dlffi_Pointer_gc);
