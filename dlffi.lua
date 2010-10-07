@@ -2,6 +2,18 @@ local dl = require("liblua_dlffi");
 
 local Dlffi = {};
 
+-- {{{ is_callable(obj) -- if the object can be called
+local function is_callable(obj)
+	if type(obj) == "function" then return true end;
+	if type(obj) == "userdata" or type(obj) == "table" then
+		local mt = getmetatable(obj);
+		if not mt then return false end;
+		return mt.__call ~= nil;
+	end;
+	return false;
+end;
+-- }}} is_callable
+
 function Dlffi:new(api, init, gc, spec)
 	--[[
 		api	- table of tables with API
@@ -16,14 +28,7 @@ function Dlffi:new(api, init, gc, spec)
 	end;
 	if not spec then spec = {} end;
 	if gc ~= nil then
-		t = getmetatable(gc);
-		if t ~= nil then
-			if t.__call ~= nil then
-				t = "function";
-			else t = nil end;
-		else t = type(gc);
-		end;
-		if t ~= "function" then
+		if not is_callable(gc) then
 			return nil, "GC must be a function";
 		end;
 		o._gc = newproxy(true);
@@ -44,6 +49,10 @@ function Dlffi:new(api, init, gc, spec)
 			end;
 		end;
 		if f == nil then return end;
+		if not is_callable(f) then
+			-- some property requested
+			return f;
+		end;
 		local val;
 		if not _type then
 			val = rawget(o, "_val");
@@ -55,19 +64,10 @@ function Dlffi:new(api, init, gc, spec)
 			local gc = spec[v];
 			if gc then
 				local _type = type(gc);
-				if _type == "userdata" then
-					-- userdata can be a function too
-					_type = getmetatable(gc);
-					if _type then
-						_type = type(_type.__call);
-					end;
-				end;
 				return self:new(
 					api,
 					f(val, select(2, ...)),
-					(_type == "function")
-						and gc
-						or nil,
+					is_callable(gc) and gc or nil,
 					spec
 				);
 			end;
