@@ -38,8 +38,6 @@ function Dlffi:new(api, init, gc, spec)
 		end;
 	end;
 	setmetatable(o, { __index = function (t, v)
-		local f = self[v];
-		if f then return f end;
 		local _type;
 		for i = 1, #api, 1 do
 			f = api[i][v];
