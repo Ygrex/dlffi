@@ -38,7 +38,7 @@ function Dlffi:new(api, init, gc, spec)
 		end;
 	end;
 	setmetatable(o, { __index = function (t, v)
-		local _type;
+		local _type, f;
 		for i = 1, #api, 1 do
 			f = api[i][v];
 			if f ~= nil then
@@ -49,6 +49,7 @@ function Dlffi:new(api, init, gc, spec)
 		if f == nil then return end;
 		if not is_callable(f) then
 			-- some property requested
+			print(t,v,f);
 			return f;
 		end;
 		local val;
