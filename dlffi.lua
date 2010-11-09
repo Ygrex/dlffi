@@ -12,7 +12,7 @@ local function is_callable(obj)
 	end;
 	return false;
 end;
--- }}} is_callable
+-- }}} is_callable()
 
 function Dlffi:new(api, init, gc, spec)
 	--[[
@@ -23,6 +23,7 @@ function Dlffi:new(api, init, gc, spec)
 	--]]
 	local o = {};
 	o._val = init;
+	o._type = "object";
 	if init == nil or init == dl.NULL then
 		return nil, "Bad initial value specified";
 	end;
@@ -39,38 +40,50 @@ function Dlffi:new(api, init, gc, spec)
 	end;
 	setmetatable(o, { __index = function (t, v)
 		local _type, f;
+		-- find table with the requested key
 		for i = 1, #api, 1 do
-			f = api[i][v];
+			f = rawget(api[i], v);
 			if f ~= nil then
-				_type = api[i]._type;
+				_type = rawget(api[i], "_type");
 				break;
 			end;
 		end;
-		if f == nil then return end;
+		if f == nil then
+			-- nothing found
+			return;
+		end;
 		if not is_callable(f) then
 			-- some property requested
-			print(t,v,f);
 			return f;
 		end;
-		local val;
-		if not _type then
-			val = rawget(o, "_val");
-		else
-			val = o;
-		end;
-		if val == nil or val == dl.NULL then return end;
-		return function(...)
-			local gc = spec[v];
-			if gc then
-				local _type = type(gc);
+		-- some method requested
+		local constructor = spec[v]; -- if the method is a constructor
+		-- get it's GC
+		local gc = is_callable(constructor) and constructor or nil;
+		-- construct appropriate proxy function
+		return function(obj, ...)
+			if not _type then
+				-- function expects raw context (e.g. userdata)
+				if type(obj) == "table" then
+					-- but Dlffi object specified
+					obj = rawget(t, "_val");
+				end
+			end;
+			if constructor then
+				-- construct new object
 				return self:new(
 					api,
-					f(val, select(2, ...)),
-					is_callable(gc) and gc or nil,
+					f(obj, ...),
+					gc,
 					spec
 				);
 			end;
-			return f(val, select(2, ...));
+			if obj == dl.NULL then
+				-- uninitialized/invalid context
+				return;
+			end;
+			-- execute the function
+			return f(obj, ...);
 		end;
 	end });
 	return o;
