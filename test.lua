@@ -8,12 +8,13 @@
 	fit the sample code for your very case;
 --]]
 
-for k,v in pairs( require("mysql") ) do _G[k] = v end;
+local mysql = require("mysql");
+assert(type(mysql) == "table", "MySQL module loading error");
 
 function main()
 	-- run a constructor
-	local sql = Mysql:new(true);
-	assert(sql ~= nil, "cannot initialize ODBC");
+	local sql, e = mysql.Mysql:new(true);
+	assert(sql ~= nil, e);
 --[[ uncomment the following block to limit the Address Space
 -- load [sg]etrlimit functions
 for _, v in ipairs { "setrlimit", "getrlimit" } do
@@ -46,10 +47,10 @@ print("hard:", dl.type_element(buf, struct["rlimit"], 2));
 		"mypas",
 		"test",
 		3306,
-		dl.NULL,
+		mysql.dl.NULL,
 		0
 	);
-	assert(con ~= dl.NULL, "unable to connect");
+	assert(con ~= mysql.dl.NULL, "unable to connect");
 	-- get prepared to use transactions
 	local r, e = sql:autocommit(0);
 	assert(r == 0, e and e or "mysql_auto_commit() failed");
