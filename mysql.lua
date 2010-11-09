@@ -207,13 +207,12 @@ function Mysql:new(server_end)
 			mysql.server_end();
 		end;
 	end;
-	local o = dl.Dlffi:new(
-		{ self,	mysql},
+	return dl.Dlffi:new(
+		{ Mysql, mysql},
 		mysql.init(dl.NULL),
 		gc,
 		mysql_bind
 	);
-	return o;
 end;
 -- }}} Mysql:new
 
