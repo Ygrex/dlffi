@@ -75,6 +75,26 @@ int type_push(lua_State *L, void *o, ffi_type *t)
 		t == &ffi_type_ushort
 	) {
 		lua_pushinteger(L, *(short *)o);
+	} else if (
+		t == &ffi_type_uint64 ||
+		t == &ffi_type_sint64
+	) {
+		lua_pushinteger(L, *(int64_t *)o);
+	} else if (
+		t == &ffi_type_uint32 ||
+		t == &ffi_type_sint32
+	) {
+		lua_pushinteger(L, *(int32_t *)o);
+	} else if (
+		t == &ffi_type_uint16 ||
+		t == &ffi_type_sint16
+	) {
+		lua_pushinteger(L, *(int16_t *)o);
+	} else if (
+		t == &ffi_type_uint8 ||
+		t == &ffi_type_sint8
+	) {
+		lua_pushinteger(L, *(int8_t *)o);
 	} else {
 		// unknown structure, create dlffi_Pointer
 		dlffi_Pointer *p = (dlffi_Pointer *)
