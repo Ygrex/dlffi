@@ -172,7 +172,9 @@ inline void *type_write(lua_State *L, int idx, ffi_type *type, void *dst)
 			val_u = (dlffi_check_Pointer(L, idx))->pointer;
 			}
 			lua_pop(L, 2);
-		} else return NULL;
+		} else {
+			return NULL;
+		}
 		len = sizeof(void *);
 		u = &val_u;
 		break;
@@ -395,7 +397,8 @@ static void dlffi_closure_run(
 		bzero(ret, o->type->size);
 		r = lua_pcall(o->L, cif->nargs, 1, 0);
 	}
-	if (r == 0) {
+	if ((r == 0) && (o->type != &ffi_type_void)) {
+		// no errors and function has returned something
 		type_write(o->L, -1, o->type, ret);
 	}
 	lua_settop(o->L, top);
