@@ -695,13 +695,16 @@ static int dlffi_Pointer_gc(lua_State *L) {
 			lua_rawgeti(L, LUA_REGISTRYINDEX, o->ref);
 			lua_pushvalue(L, 1);
 			lua_pcall(L, 1, 0, 0);
-			o->pointer = NULL;
 		}
 		luaL_unref(L, LUA_REGISTRYINDEX, o->ref);
 		o->ref = LUA_REFNIL;
 	}
-	if (o->gc == 0) return 0;
+	if (o->gc == 0) {
+		o->pointer = NULL; // avoid further pointer usage
+		return 0;
+	}
 	free(o->pointer);
+	o->pointer = NULL; // avoid further pointer usage
 	return 0;
 }
 /* }}} dlffi_Pointer_gc */
