@@ -690,12 +690,15 @@ static int dlffi_run(lua_State *L) {
 static int dlffi_Pointer_gc(lua_State *L) {
 	dlffi_Pointer *o = dlffi_check_Pointer(L, 1);
 	if (!o) return 0;
-	if (o->ref != 0) {
+	if (o->ref != LUA_REFNIL) {
 		if ( lua_checkstack(L, 2) != 0 ) {
 			lua_rawgeti(L, LUA_REGISTRYINDEX, o->ref);
 			lua_pushvalue(L, 1);
 			lua_pcall(L, 1, 0, 0);
+			o->pointer = NULL;
 		}
+		luaL_unref(L, LUA_REGISTRYINDEX, o->ref);
+		o->ref = LUA_REFNIL;
 	}
 	if (o->gc == 0) return 0;
 	free(o->pointer);
@@ -761,7 +764,8 @@ static int dlffi_gc(lua_State *L) {
 		dlerror();
 	}
 	free(o->types);
-	if (o->str && o->ret) free(*(char **)o->ret);
+	o->types = NULL; // to avoid further invocation
+	if (o->str && o->ret) free(*(char **)(o->ret));
 	if (o->ret) free(o->ret);
 	return 0;
 }
