@@ -21,6 +21,9 @@ function Dlffi:new(api, init, gc, spec)
 		gc	- destructor: void function(self)
 		spec	- list of special functions
 	--]]
+	if type(init) == "table" then
+		return self:new(api, init._val, gc, spec);
+	end;
 	local o = {};
 	o._val = init;
 	o._type = "object";
@@ -35,55 +38,29 @@ function Dlffi:new(api, init, gc, spec)
 		o._gc = newproxy(true);
 		getmetatable(o._gc).__gc = function()
 			local val = o._val;
-			if val ~= nil and val ~= dl.NULL then gc(val) end;
+			if (val ~= nil) and (val ~= dl.NULL) then gc(val) end;
 		end;
 	end;
 	setmetatable(o, { __index = function (t, v)
-		local _type, f;
+		local f;
 		-- find table with the requested key
 		for i = 1, #api, 1 do
 			f = rawget(api[i], v);
-			if f ~= nil then
-				_type = rawget(api[i], "_type");
-				break;
-			end;
+			if f ~= nil then break end;
 		end;
-		if f == nil then
-			-- nothing found
-			return;
-		end;
-		if not is_callable(f) then
-			-- some property requested
-			return f;
-		end;
-		-- some method requested
-		local constructor = spec[v]; -- if the method is a constructor
+		local constructor = spec[v]; -- if a constructor requested
+		if not constructor then return f end;
 		-- get it's GC
 		local gc = is_callable(constructor) and constructor or nil;
 		-- construct appropriate proxy function
 		return function(obj, ...)
-			if not _type then
-				-- function expects raw context (e.g. userdata)
-				if type(obj) == "table" then
-					-- but Dlffi object specified
-					obj = rawget(t, "_val");
-				end
-			end;
-			if constructor then
-				-- construct new object
-				return self:new(
-					api,
-					f(obj, ...),
-					gc,
-					spec
-				);
-			end;
-			if obj == dl.NULL then
-				-- uninitialized/invalid context
-				return;
-			end;
-			-- execute the function
-			return f(obj, ...);
+			print("constructor", obj, ...);
+			return self:new(
+				api,
+				f(obj, ...),
+				gc,
+				spec
+			);
 		end;
 	end });
 	return o;
@@ -143,5 +120,16 @@ end;
 
 dl.Dlffi = Dlffi;
 dl.Dlffi_t = Dlffi_t;
+local cast_table = function(func, tbl)
+	local val = tbl["_val"];
+	if val and (val ~= dl.NULL) then return val end;
+end;
+dl.cast_table = cast_table;
+local rawload = dl.load;
+dl.rawload = rawload;
+dl.load = function (lib, sym, ret, arg, cast)
+	if not cast then cast = cast_table end;
+	return rawload(lib, sym, ret, arg, cast);
+end;
 return dl;
 

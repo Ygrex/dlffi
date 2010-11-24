@@ -20,16 +20,26 @@ typedef struct dlffi_Pointer {
 
 /* {{{ struct dlffi_Function */
 typedef struct dlffi_Function {
+	// dynamic library handler
 	void *dlhdl;
+	// dynamic symbol handler
 	void *dlsym;
+	// FFI function context
 	ffi_cif cif;
+	// FFI arguments types for the function
 	ffi_type **types;
+	// FFI type of the function's return value
 	ffi_type *type;
+	// pointer to the buffer with return value
 	void *ret;
-	int str;
+	// reference to closure Lua function
 	int ref;
+	// pointer to closure FFI function
 	ffi_closure *closure;
+	// pointer to Lua thread, where the function valid
 	lua_State *L;
+	// reference to Lua function to cast tables to C type
+	int ref_table;
 } dlffi_Function;
 /* }}} dlffi_Function */
 
@@ -127,8 +137,20 @@ inline void write_value(
 }
 // }}} write_value
 
-/* {{{ type_write(L, int idx, ffi_type *type, void *dst) */
-inline void *type_write(lua_State *L, int idx, ffi_type *type, void *dst)
+/* {{{ type_write(...) */
+//	L	- Lua thread
+//	idx	- index of the value in the Lua stack
+//	type	- expected FFI type of the value
+//	dst	- allocated buffer for the value
+//	func	- dlffi_Function of which aruments are being parsed, if any
+//	Return: NULL on error or some invalid pointer on success
+inline void *type_write(
+	lua_State *L,
+	int idx,
+	ffi_type *type,
+	void *dst,
+	dlffi_Function *func
+)
 {
 	void *u = NULL;
 	size_t len;
@@ -205,6 +227,22 @@ inline void *type_write(lua_State *L, int idx, ffi_type *type, void *dst)
 		len = sizeof(void *);
 		u = &val_u;
 		break;
+	case LUA_TTABLE:
+		if (func == NULL) return NULL;
+		if (func->ref_table == LUA_REFNIL) return NULL;
+		if ( lua_checkstack(L, 3) == 0 ) return NULL;
+		// save stack to avoid any modifications
+		int top = lua_gettop(L);
+		// call the referent function
+		lua_rawgeti(L, LUA_REGISTRYINDEX, func->ref_table);
+		lua_pushlightuserdata(L, func);
+		lua_pushvalue(L, idx);
+		if ( lua_pcall(L, 2, 1, 0) == 0 ) {
+			u = type_write(L, top + 1, type, dst, func);
+		} else u = NULL;
+		// restore stack
+		lua_settop(L, top);
+		return u;
 	default:
 		return NULL;
 	}
@@ -334,7 +372,8 @@ static int l_dlffi_type_element(lua_State *L) {
 			L,
 			4,
 			t->elements[n - 1],
-			p + type_offset(t, n)
+			p + type_offset(t, n),
+			NULL
 		);
 		if (lua_checkstack(L, 1) == 0) return 0;
 		lua_pushboolean(L, (u == NULL) ? 0 : 1);
@@ -399,7 +438,7 @@ static void dlffi_closure_run(
 	}
 	if ((r == 0) && (o->type != &ffi_type_void)) {
 		// no errors and function has returned something
-		type_write(o->L, -1, o->type, ret);
+		type_write(o->L, -1, o->type, ret, o);
 	}
 	lua_settop(o->L, top);
 }
@@ -423,6 +462,7 @@ static int l_dlffi_create(lua_State *L) {
 	o->ret = NULL;
 	o->ref = LUA_REFNIL;
 	o->closure = NULL;
+	o->ref_table = LUA_REFNIL;
 	/* set the FFI type of a return value */
 	o->type = lua_touserdata(L, 2);
 	if (! o->type) {
@@ -431,7 +471,6 @@ static int l_dlffi_create(lua_State *L) {
 			"Incorrect return value FFI type specified");
 		return 2;
 	}
-	o->str = 0;
 	luaL_getmetatable(L, "dlffi_Function");
 	lua_setmetatable(L, -2);
 	/* iterate through argument FFI types */
@@ -487,7 +526,7 @@ static int l_dlffi_create(lua_State *L) {
 	char *function,
 	ffi_type *rtype,
 	ffi_type **argument types,
-	boolean string_function
+	[ function ref_table ]
 	)
 */
 static int l_dlffi_load(lua_State *L) {
@@ -496,7 +535,14 @@ static int l_dlffi_load(lua_State *L) {
 	const char *lib = luaL_checkstring(L, 1);
 	const char *fun = luaL_checkstring(L, 2);
 	if (lua_checkstack(L, 5) == 0) return 0;
-	/* create the DLFFI structure */
+	int ref_table;
+	if (lua_type(L, 5) == LUA_TNIL) {
+		ref_table = LUA_REFNIL;
+	} else {
+		lua_pushvalue(L, 5);
+		ref_table = luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+	/* create dlffi_Function structure */
 	dlffi_Function *o = (dlffi_Function *)
 		lua_newuserdata(L, sizeof(dlffi_Function));
 	if (!o) return 0;
@@ -505,9 +551,7 @@ static int l_dlffi_load(lua_State *L) {
 	o->dlsym = NULL;
 	o->ret = NULL;
 	o->ref = LUA_REFNIL;
-	if (lua_gettop(L) > 5) {
-		o->str = lua_toboolean(L, 5);
-	} else o->str = 0;
+	o->ref_table = ref_table;
 	luaL_getmetatable(L, "dlffi_Function");
 	lua_setmetatable(L, -2);
 	if (*lib == 0) {
@@ -570,17 +614,6 @@ static int l_dlffi_load(lua_State *L) {
 		o->ret = malloc(sizeof(ffi_arg));
 	else o->ret = malloc(o->type->size);
 	if (! o->ret) return 0;
-	if (o->str) {
-		if (o->type != &ffi_type_pointer) {
-			o->str = 0;
-			lua_pushnil(L);
-			lua_pushstring(L,
-				"string function must be of ffi_type_pointer"
-			);
-			return 2;
-		}
-		*(char **)o->ret = NULL;
-	}
 	return 1;
 }
 /* }}} l_dlffi_load */
@@ -641,7 +674,7 @@ static int dlffi_run(lua_State *L) {
 		argv[argc] = malloc(o->types[argc]->size);
 		if (!argv[argc]) return raise_error(L, NULL, argc, argv);
 		void *u = type_write(
-			L, argc + 2, o->types[argc], argv[argc]
+			L, argc + 2, o->types[argc], argv[argc], o
 		);
 		if (u == NULL) {
 			free(argv[argc]);
@@ -652,14 +685,7 @@ static int dlffi_run(lua_State *L) {
 			);
 		}
 	} while(argc);
-	if (o->str) {
-		free(*(char **)o->ret);
-		*(char **)o->ret = NULL;
-	}
 	ffi_call(&(o->cif), o->dlsym, (void *)o->ret, argv);
-	if ( o->str && ( *(char **)o->ret != NULL ) ) {
-		*(char **)o->ret = strdup(*(const char **)o->ret);
-	}
 	while (argv[argc]) {
 		if (lua_type(L, argc + 2) == LUA_TSTRING)
 			free(*(char **)(argv[argc]));
@@ -667,11 +693,9 @@ static int dlffi_run(lua_State *L) {
 	};
 	free(argv);
 	if (o->type == &ffi_type_void) return 0;
-	if (o->str) {
-		if ( lua_checkstack(L, 1) == 0 ) return 0;
-		lua_pushstring(L, *(char **)(o->ret));
-		return 1;
-	} else return type_push(L, o->ret, o->type);
+	//return type_push(L, o->ret, o->type);
+	int tmp = type_push(L, o->ret, o->type);
+	return tmp;
 }
 /* }}} dlffi_run */
 
@@ -751,13 +775,13 @@ static int dlffi_gc(lua_State *L) {
 	dlffi_Function *o = lua_touserdata(L, 1);
 	if (!o) return 0;
 	luaL_unref(L, LUA_REGISTRYINDEX, o->ref);
+	luaL_unref(L, LUA_REGISTRYINDEX, o->ref_table);
 	if (o->dlhdl) {
 		dlclose(o->dlhdl);
 		dlerror();
 	}
 	free(o->types);
 	o->types = NULL; // to avoid further invocation
-	if (o->str && o->ret) free(*(char **)(o->ret));
 	if (o->ret) free(o->ret);
 	return 0;
 }

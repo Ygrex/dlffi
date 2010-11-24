@@ -258,7 +258,7 @@ function Mysql:real_escape_string(stmt)
 	local buf = dl.dlffi_Pointer(1 + 2 * #stmt, true);
 	if buf == nil then return nil, "dlffi_Pointer() failed" end;
 	local r = mysql.real_escape_string(
-		self._val,
+		self,
 		buf,
 		stmt,
 		#stmt
