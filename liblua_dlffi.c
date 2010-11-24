@@ -593,20 +593,6 @@ inline dlffi_Function *dlffi_check_Function(lua_State *L) {
 }
 /* }}} dlffi_check_Function */
 
-/* {{{ const char *dlffi_Function_str(
-	dlffi_Function *o,
-	int idx
-	)
-*/
-static int dlffi_Function_str(lua_State *L) {
-	dlffi_Function *o = dlffi_check_Function(L);
-	if (!o) return 0;
-	luaL_checktype(L, -1, LUA_TFUNCTION);
-	o->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-	return 0;
-}
-/* }}} dlffi_Function_str */
-
 /* {{{ ... dlffi_run(...)
 	arguments like in a loaded function
 */
@@ -939,7 +925,6 @@ static const struct luaL_reg liblua_dlffi [] = {
 };
 
 static const struct luaL_reg liblua_dlffi_m [] = {
-	{"str", dlffi_Function_str},
 	{NULL, NULL}
 };
 
@@ -957,9 +942,6 @@ int luaopen_liblua_dlffi(lua_State *L) {
 	if (!been_here) {
 	/* {{{ dlffi_Function metatable */
 	luaL_newmetatable(L, "dlffi_Function");
-	lua_pushstring(L, "__index");
-	lua_pushvalue(L, -2);
-	lua_settable(L, -3);
 	lua_pushstring(L, "__gc");
 	lua_pushcfunction(L, dlffi_gc);
 	lua_settable(L, -3);
