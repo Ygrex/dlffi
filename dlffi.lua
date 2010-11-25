@@ -1,5 +1,34 @@
 local dl = require("liblua_dlffi");
 
+-- {{{ cast_table()
+local cast_table = function(func, tbl)
+	local val = tbl["_val"];
+	if val and (val ~= dl.NULL) then return val end;
+end;
+-- }}} cast_table()
+
+-- {{{ load() <-> rawload()
+local rawload = dl.load;
+dl.rawload = rawload;
+dl.load = function (lib, sym, ret, arg, cast)
+	if not cast then cast = cast_table end;
+	return rawload(lib, sym, ret, arg, cast);
+end;
+-- }}} load() <-> rawload()
+
+-- {{{ dlffi_Pointer() <-> rawdlffi_Pointer()
+local rawdlffi_Pointer = dl.dlffi_Pointer;
+dl.rawdlffi_Pointer = rawdlffi_Pointer;
+local dlffi_Pointer = function(p, ...)
+	if type(p) == "table" then
+		return dlffi_Pointer(cast_table(dlffi.NULL, p), ...);
+	end;
+	return rawdlffi_Pointer(p, ...);
+end;
+dl.dlffi_Pointer = dlffi_Pointer;
+-- }}} dlffi_Pointer() <-> rawdlffi_Pointer()
+
+-- {{{ Dlffi
 local Dlffi = {};
 
 -- {{{ is_callable(obj) -- if the object can be called
@@ -54,7 +83,6 @@ function Dlffi:new(api, init, gc, spec)
 		local gc = is_callable(constructor) and constructor or nil;
 		-- construct appropriate proxy function
 		return function(obj, ...)
-			print("constructor", obj, ...);
 			return self:new(
 				api,
 				f(obj, ...),
@@ -65,7 +93,9 @@ function Dlffi:new(api, init, gc, spec)
 	end });
 	return o;
 end;
+-- }}} Dlffi
 
+-- {{{ Dlffi_t
 local Dlffi_t = {}; -- types container
 
 function Dlffi_t:new(k, v)
@@ -117,19 +147,10 @@ function Dlffi_t:new(k, v)
 	end;
 	return o;
 end;
+-- }}} Dlffi_t
 
 dl.Dlffi = Dlffi;
 dl.Dlffi_t = Dlffi_t;
-local cast_table = function(func, tbl)
-	local val = tbl["_val"];
-	if val and (val ~= dl.NULL) then return val end;
-end;
 dl.cast_table = cast_table;
-local rawload = dl.load;
-dl.rawload = rawload;
-dl.load = function (lib, sym, ret, arg, cast)
-	if not cast then cast = cast_table end;
-	return rawload(lib, sym, ret, arg, cast);
-end;
 return dl;
 

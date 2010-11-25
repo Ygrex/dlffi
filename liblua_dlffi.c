@@ -738,6 +738,9 @@ static int l_dlffi_Pointer(lua_State *L) {
 			o->pointer = malloc(lua_tointeger(L, 1));
 			if (o->pointer == NULL) return 0;
 			break;
+		case LUA_TNIL:
+			o->pointer = NULL;
+			break;
 		default:
 			return 0;
 		}
