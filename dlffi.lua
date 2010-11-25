@@ -37,16 +37,22 @@ local multireturn = function(proxy, ...)
 			true
 		);
 		if not buf then return nil, e end;
-		-- initialize buffer
-		e = dl.type_element(
-			buf,
-			struct[cur_t],
-			1,
-			cur_v
-		);
-		if not e then return
-			nil,
-			"type_element() failed"
+		-- initialize buffer if needed
+		if (cur_v ~= dl.NULL) or
+			(cur_t == dl.ffi_type_pointer) then
+			e = dl.type_element(
+				buf,
+				struct[cur_t],
+				1,
+				cur_v
+			);
+			if not e then return
+				nil,
+				string.format(
+					"type_element() failed for #%d",
+					i
+				);
+			end;
 		end;
 		-- substitute value
 		new_val[i] = buf;
