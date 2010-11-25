@@ -141,8 +141,8 @@ dl.load = function (lib, sym, ret, arg, cast)
 			mt.struct = struct;
 			mt.symbol = symbol;
 			-- }}} make proxy object
-			-- return proxy instead of original one
-			return proxy;
+			-- return proxy and the original symbol
+			return proxy, symbol;
 		end;
 	end;
 	return rawload(lib, sym, ret, arg, cast);
@@ -229,12 +229,18 @@ end;
 -- {{{ Dlffi_t
 function Dlffi_t:new(k, v)
 	local o = {
+		-- table for FFI structures
 		types = {},
+		-- Lua tables corresponding to FFI structures
+		-- or/and regular FFI types
+		-- (GC-less values)
 		tables = {},
 		gc = newproxy(true),
 	};
 	if o.gc == nil then return nil, "newproxy() failed" end;
+	-- {{{ GC
 	getmetatable(o.gc).__gc = function()
+		o.tables = nil;
 		for k, v in pairs(o.types) do
 			if type(v) == "userdata" then
 				dl.type_free(v);
@@ -242,14 +248,17 @@ function Dlffi_t:new(k, v)
 			end;
 		end;
 	end;
+	-- }}} GC
 	setmetatable(o,
 		{
 		__index = function(t, k)
 			local v = rawget(t, k);
 			if v then return v end;
-			local v = t.types;
-			if v == nil then return nil end;
-			return v[k];
+			v = t.types[k];
+			if not v then
+				v = t.tables[k];
+			end;
+			return v;
 		end,
 		__newindex = function(t, k, v)
 			local s = t.types[k];
@@ -260,11 +269,17 @@ function Dlffi_t:new(k, v)
 				t.tables[v] = nil;
 			end;
 			-- initialize the new type
-			local new = dl.type_init(v);
-			if new ~= nil then
-				t.types[k] = new;
+			if type(v) == "userdata" then
+				-- regular non-structure FFI type
 				t.tables[k] = v;
+			else -- expect a Lua table
+				local init = dl.type_init(v);
+				if init then
+					t.types[k] = init;
+					t.tables[k] = v;
+				end;
 			end;
+			return v;
 		end
 		}
 	);
@@ -274,7 +289,14 @@ function Dlffi_t:new(k, v)
 			return nil, "type initialization failed";
 		end;
 	end;
+	rawset(o, "new", self.malloc);
 	return o;
+end;
+
+-- allocate buffer for named FFI type
+function Dlffi_t:malloc(name, gc)
+	if type(name) == "string" then name = self[name] end;
+	return dl.dlffi_Pointer(dl.sizeof(name), gc);
 end;
 -- }}} Dlffi_t
 
