@@ -693,9 +693,7 @@ static int dlffi_run(lua_State *L) {
 	};
 	free(argv);
 	if (o->type == &ffi_type_void) return 0;
-	//return type_push(L, o->ret, o->type);
-	int tmp = type_push(L, o->ret, o->type);
-	return tmp;
+	return type_push(L, o->ret, o->type);
 }
 /* }}} dlffi_run */
 
