@@ -13,6 +13,74 @@ local Dlffi_t = {}; -- types container
 -- {{{ load() <-> rawload()
 local rawload = dl.load;
 dl.rawload = rawload;
+
+-- {{{ proxy for multi-return functions
+local multireturn = function(proxy, ...)
+	local arg = proxy.arg;
+	local ret = proxy.ret;
+	local struct = proxy.struct;
+	local symbol = proxy.symbol;
+	local val = {...};
+	local new_val = {};
+	-- {{{ substitute values with pointers
+	for i = 1, #val, 1 do new_val[i] = val[i] end;
+	for cx = 1, #ret, 1 do
+		local i = ret[cx];
+		local cur_v = new_val[i];
+		if not cur_v then
+			new_val[i] = dl.NULL;
+		else -- {{{ wrap value
+		local cur_t = arg[i];
+		-- create buffer
+		local buf, e = dl.dlffi_Pointer(
+			dl.sizeof(cur_t),
+			true
+		);
+		if not buf then return nil, e end;
+		-- initialize buffer
+		e = dl.type_element(
+			buf,
+			struct[cur_t],
+			1,
+			cur_v
+		);
+		if not e then return
+			nil,
+			"type_element() failed"
+		end;
+		-- substitute value
+		new_val[i] = buf;
+		end; -- }}} wrap value
+	end;
+	-- }}} substitute values with pointers
+	-- jump to original symbol
+	local retval, e = symbol(unpack(new_val));
+	if e then return false, e end;
+	-- get returned values
+	local retvals = {};
+	for cx = 1, #ret, 1 do
+		local i = ret[cx];
+		local buf = new_val[i];
+		if buf == dl.NULL then
+			table.insert(ret, dl.NULL);
+		else -- {{{ unwrap value
+		local cur_t = arg[i];
+		e = dl.type_element(
+			buf,
+			struct[cur_t],
+			1
+		);
+		if not e then return nil,
+			"Return value unwrap failed";
+		end;
+		-- push return value
+		table.insert(retvals, e);
+		end; -- }}} unwrap value
+	end;
+	return true, retval, unpack(retvals);
+end;
+-- }}} proxy for multi-return functions
+
 dl.load = function (lib, sym, ret, arg, cast)
 	-- if a dynamic symbol is loading
 	if type(lib) == "string" then
@@ -57,72 +125,6 @@ dl.load = function (lib, sym, ret, arg, cast)
 			local symbol, e =
 				rawload(lib, sym, ret.ret, new_arg, cast);
 			if not symbol then return nil, e end;
-			-- {{{ make a proxy function
-			local f = function(proxy, ...)
-				local arg = proxy.arg;
-				local ret = proxy.ret;
-				local struct = proxy.struct;
-				local symbol = proxy.symbol;
-				local val = {...};
-				local new_val = {};
-				-- {{{ substitute values with pointers
-				for i = 1, #val, 1 do new_val[i] = val[i] end;
-				for cx = 1, #ret, 1 do
-					local i = ret[cx];
-					local cur_v = new_val[i];
-					if not cur_v then
-						new_val[i] = dl.NULL;
-					else -- {{{ wrap value
-					local cur_t = arg[i];
-					-- create buffer
-					local buf, e = dl.dlffi_Pointer(
-						dl.sizeof(cur_t),
-						true
-					);
-					if not buf then return nil, e end;
-					-- initialize buffer
-					e = dl.type_element(
-						buf,
-						struct[cur_t],
-						1,
-						cur_v
-					);
-					if not e then return
-						nil,
-						"type_element() failed"
-					end;
-					-- substitute value
-					new_val[i] = buf;
-					end; -- }}} wrap value
-				end;
-				-- }}} substitute values with pointers
-				-- jump to original symbol
-				local retval, e = symbol(unpack(new_val));
-				if e then return false, e end;
-				-- get returned values
-				local retvals = {};
-				for cx = 1, #ret, 1 do
-					local i = ret[cx];
-					local buf = new_val[i];
-					if buf == dl.NULL then
-						table.insert(ret, dl.NULL);
-					else -- {{{ unwrap value
-					local cur_t = arg[i];
-					e = dl.type_element(
-						buf,
-						struct[cur_t],
-						1
-					);
-					if not e then return nil,
-						"Return value unwrap failed";
-					end;
-					-- push return value
-					table.insert(retvals, e);
-					end; -- }}} unwrap value
-				end;
-				return true, retval, unpack(retvals);
-			end;
-			-- }}} make a proxy function
 			-- {{{ make proxy object
 			local proxy = newproxy(true);
 			if not proxy then
@@ -133,7 +135,7 @@ dl.load = function (lib, sym, ret, arg, cast)
 				return nil, "newproxy has no metatable";
 			end;
 			mt.__index = mt;
-			mt.__call = f;
+			mt.__call = multireturn;
 			mt.arg = arg;
 			mt.ret = ret;
 			mt.struct = struct;
