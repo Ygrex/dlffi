@@ -161,7 +161,7 @@ dl.rawdlffi_Pointer = rawdlffi_Pointer;
 local dlffi_Pointer = function(p, ...)
 	local t = type(p);
 	if t == "table" then
-		return dlffi_Pointer(cast_table(dlffi.NULL, p), ...);
+		return dlffi_Pointer(cast_table(dl.NULL, p), ...);
 	elseif t == "string" then
 		local struct = Dlffi_t:new("void *", { dl.ffi_type_pointer });
 		if not struct then return nil, "Dlffi_t:new() failed" end;
@@ -319,8 +319,226 @@ function Dlffi_t:malloc(name, gc)
 end;
 -- }}} Dlffi_t
 
+-- {{{ Header
+Header = {};
+
+-- {{{ proxy_call(...)
+local proxy_call = function(t, ...)
+	if t.lookup then
+		t.gc = t.lookup[t.gc];
+		t.lookup = nil;
+	end;
+	return Dlffi:new(
+		t.inherit,
+		t.symbol(...),
+		t.gc
+	);
+end;
+Header.proxy_call = proxy_call;
+-- }}} proxy_call()
+
+-- {{{ proxy_string() - cast null-terminated string into Lua type
+local proxy_string = function(t, ...)
+	local gc = t.gc;
+	if t.lookup then
+		gc = t.lookup[t.gc];
+		t.lookup = nil;
+		t.gc = gc;
+	end;
+	local r, e = dl.dlffi_Pointer(t.symbol(...), gc == true);
+	if not r then return nil, e end;
+	if gc and (type(gc) ~= "boolean") then r:set_gc(gc) end;
+	return r:tostring();
+end;
+Header.proxy_string = proxy_string;
+-- }}} proxy_string()
+
+-- {{{ Header.proxy(...) - make proxy function
+--	symbol	- dynamic symbol or any reference
+--	inherit	- table of inherrited chunks
+--	gc	- GC flag or destructor name
+--	lookup	- table to look for GC
+--	call	- function to call instead of symbol
+local proxy = function(symbol, inherit, gc, lookup, call)
+	local o = {};
+	if type(gc) ~= "string" then
+		-- lookup is not needed
+		lookup = nil;
+	end;
+	local mt = {
+		["symbol"]	= symbol,
+		["inherit"]	= inherit,
+		["gc"]		= gc,
+		["lookup"]	= lookup,
+	};
+	mt["__index"] = mt;
+	mt["__call"] = call;
+	return setmetatable(o, mt);
+end;
+Header.proxy = proxy;
+-- }}} Header.proxy()
+
+-- {{{ Header.proxify(...) - proxify dynamic symbol if needed
+--	symbol	- dynamic symbol or any reference
+--	proto	- function prototype (table from header)
+--	lib	- library table with all long named function for GC lookups
+local proxify = function(symbol, proto, lib)
+	local gc = proto["_gc"];
+	local inherit = proto["_inherit"];
+	local root = lib[""];
+	if not root then
+		root = {};
+		lib[""] = root;
+	end;
+	if inherit then
+		-- proxy with a constructor function
+		local api = {};
+		for i = 1, #inherit, 1 do
+			local v = inherit[i];
+			local t = lib[v];
+			if not t then
+				t = {};
+				lib[v] = t;
+			end;
+			table.insert(api, t);
+		end;
+		return proxy(symbol, api, gc, root, proxy_call);
+	end;
+	if gc ~= nil then
+		-- proxy with a string function
+		return proxy(symbol, nil, gc, root, proxy_string);
+	end;
+	-- no need in proxy
+	return symbol;
+end;
+Header.proxify = proxify;
+-- }}} Header.proxify()
+
+-- {{{ Header.normalize(...) - normalize header's metadata
+--	opt	- metadata for the header's chunk
+local normalize = function(opt)
+	if not opt then opt = {} end;
+	local glue = opt["glue"];
+	if not glue then glue = "_" end;
+	local pref = opt["prefix"];
+	local hier;
+	if pref then
+		if type(pref) == "string" then pref = { pref } end;
+		hier = pref;
+		pref = table.concat(pref, glue);
+	else
+		pref = "";
+		hier = {};
+	end;
+	return {
+		["prefix"]	= pref;	-- "curl_easy"
+		["glue"]	= glue;	-- "_"
+		["hierarchy"]	= hier;	-- { "curl", "easy" }
+	};
+end;
+Header.normalize = normalize;
+-- }}} Header.normalize()
+
+-- {{{ Header.put_symbol(...) - place symbol to the library table
+--	symbol	- loaded symbol (any reference)
+--	lib	- library table
+--	opt	- normalized header options
+--	name	- shortest name of the function
+local put_symbol = function(symbol, lib, opt, name)
+	local left = {};
+	for i = 1, #(opt["hierarchy"]), 1 do left[i] = opt["hierarchy"][i] end;
+	repeat
+		-- place symbol to the current hierarchy level
+		local tbl = table.concat(left, opt["glue"]);
+		if not lib[tbl] then lib[tbl] = {} end;
+		tbl = lib[tbl];
+		tbl[name] = symbol;
+		-- decrease hierarchy level
+		tbl = left[#left];
+		if not tbl then break end;
+		table.remove(left);
+		name = tbl .. (opt["glue"]) .. name;
+	until #(opt["hierarchy"]) < 1;
+end;
+-- export it with normalization included
+Header.put_symbol = function(symbol, lib, opt, name)
+	return put_symbol(symbol, lib, normalize(opt), name);
+end;
+-- }}} Header.put_symbol()
+
+-- {{{ Header.find_header(...)	- find table in the header by prefix
+--	header	- full header table
+--	prefix	- prefix of header chunk to look for
+local find_header = function(header, prefix)
+	for i = 1, #header, 1 do
+		local v = header[i];
+		local opt = v["_dlffi"];
+		local pref;
+		if opt then pref = opt["prefix"] end;
+		if not pref then
+			pref = "";
+		elseif type(pref) == "table" then
+			local glue = pref["glue"];
+			if not glue then glue = "_" end;
+			pref = table.concat(pref, glue);
+		end;
+		if pref == prefix then return v end;
+	end;
+end;
+Header.find_header = find_header;
+-- }}} Header.find_header()
+
+-- {{{ Header.loadlib(...)
+--	header	- header table
+--	lib	- target library table (may be nil)
+local loadlib = function (header, lib)
+	if not lib then lib = {} end;
+	local meta = header["_dlffi"];
+	if not meta then return nil, "No header metadata found" end;
+	local libs = meta["lib"];
+	if type(libs) == "string" then libs = { libs } end;
+	for i = 1, #header, 1 do
+		local cur = header[i];
+		local opt = normalize(cur["_dlffi"]);
+		for j = 1, #cur, 1 do
+			local v = cur[j];
+			-- load symbol with it's original name
+			local name = v[1];
+			if #(opt["prefix"]) > 0 then
+				v[1] = (opt["prefix"]) ..
+					(opt["glue"]) .. v[1];
+			else
+				v[1] = (opt["prefix"]) .. v[1];
+			end;
+			local f;
+			-- probe all given libraries
+			for i = 1, #libs, 1 do
+				f = dl.load(libs[i], unpack(v));
+				if f then break end;
+			end;
+			if not f then
+				return nil,
+					"Invalid prototype " ..
+					"or symbol not found: " ..
+					tostring(v[1]);
+			end;
+			-- name of function was previously modified, restore it back
+			v[1] = name;
+			-- make proxy function if needed
+			f = proxify(f, v, lib, opt);
+			-- place symbol in tables according to given hierarchy
+			put_symbol(f, lib, opt, name);
+		end;
+	end;
+	return lib;
+end;
+Header.loadlib = loadlib;
+-- }}} Header.loadlib()
+-- }}} Header
+
 dl.Dlffi = Dlffi;
 dl.Dlffi_t = Dlffi_t;
 dl.cast_table = cast_table;
+dl.Header = Header;
 return dl;
 
