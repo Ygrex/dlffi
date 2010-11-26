@@ -159,8 +159,21 @@ end;
 local rawdlffi_Pointer = dl.dlffi_Pointer;
 dl.rawdlffi_Pointer = rawdlffi_Pointer;
 local dlffi_Pointer = function(p, ...)
-	if type(p) == "table" then
+	local t = type(p);
+	if t == "table" then
 		return dlffi_Pointer(cast_table(dlffi.NULL, p), ...);
+	elseif t == "string" then
+		local struct = Dlffi_t:new("void *", { dl.ffi_type_pointer });
+		if not struct then return nil, "Dlffi_t:new() failed" end;
+		local buf = struct:new("void *", true);
+		if not buf then return nil, "malloc() failed" end;
+		local r = dl.type_element(buf, struct["void *"], 1, p);
+		if not r then return nil, "type_element() failed" end;
+		r = dl.type_element(buf, struct["void *"], 1);
+		if not r then
+			return nil, "type_element() failed, leak possible";
+		end;
+		return rawdlffi_Pointer(r, ...);
 	end;
 	return rawdlffi_Pointer(p, ...);
 end;
