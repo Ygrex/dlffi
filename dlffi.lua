@@ -14,6 +14,10 @@ local Dlffi_t = {}; -- types container
 local rawload = dl.load;
 dl.rawload = rawload;
 
+local memset, e = rawload("libc.so.6", "memset", dl.ffi_type_pointer,
+	{dl.ffi_type_pointer, dl.ffi_type_sint, dl.ffi_type_size_t} );
+assert(memset, e);
+
 -- {{{ proxy for multi-return functions
 local multireturn = function(proxy, ...)
 	local arg = proxy.arg;
@@ -38,8 +42,10 @@ local multireturn = function(proxy, ...)
 		);
 		if not buf then return nil, e end;
 		-- initialize buffer if needed
-		if (cur_v ~= dl.NULL) or
-			(cur_t == dl.ffi_type_pointer) then
+		if (cur_v == dl.NULL) then
+			-- bzero
+			memset(buf, 0, dl.sizeof(cur_t));
+		else
 			e = dl.type_element(
 				buf,
 				struct[cur_t],
@@ -414,7 +420,7 @@ end;
 Header.proxify = proxify;
 -- }}} Header.proxify()
 
--- {{{ Header.normalize(...) - normalize header's metadata
+-- {{{ Header.normalize(...) - normalize header's chunk metadata
 --	opt	- metadata for the header's chunk
 local normalize = function(opt)
 	if not opt then opt = {} end;
