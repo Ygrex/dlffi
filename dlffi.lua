@@ -74,7 +74,7 @@ local multireturn = function(proxy, ...)
 		local i = ret[cx];
 		local buf = new_val[i];
 		if buf == dl.NULL then
-			table.insert(ret, dl.NULL);
+			table.insert(retvals, dl.NULL);
 		else -- {{{ unwrap value
 		local cur_t = arg[i];
 		e = dl.type_element(
@@ -138,14 +138,9 @@ dl.load = function (lib, sym, ret, arg, cast)
 				rawload(lib, sym, ret.ret, new_arg, cast);
 			if not symbol then return nil, e end;
 			-- {{{ make proxy object
-			local proxy = newproxy(true);
-			if not proxy then
-				return nil, "newproxy() failed";
-			end;
-			local mt = getmetatable(proxy);
-			if not mt then
-				return nil, "newproxy has no metatable";
-			end;
+			local proxy = {};
+			local mt = {};
+			setmetatable(proxy, mt);
 			mt.__index = mt;
 			mt.__call = multireturn;
 			mt.arg = arg;
