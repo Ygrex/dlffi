@@ -14,7 +14,7 @@ local Dlffi_t = {}; -- types container
 local rawload = dl.load;
 dl.rawload = rawload;
 
-local memset, e = rawload("libc.so.6", "memset", dl.ffi_type_pointer,
+local memset, e = rawload("", "memset", dl.ffi_type_pointer,
 	{dl.ffi_type_pointer, dl.ffi_type_sint, dl.ffi_type_size_t} );
 assert(memset, e);
 
@@ -155,6 +155,63 @@ dl.load = function (lib, sym, ret, arg, cast)
 	return rawload(lib, sym, ret, arg, cast);
 end;
 -- }}} load() <-> rawload()
+
+-- {{{ loadsym() - load a dynamic symbol, that is not a function
+--	lib	- library name
+--	name	- dynamic symbol name
+--	ffitype	- FFI type of the loading symbol
+local function loadsym(lib, name, ffitype)
+	local dlopen, e;
+	dlopen, e = dl.load(
+		"", "dlopen", dl.ffi_type_pointer,
+		{ dl.ffi_type_pointer, dl.ffi_type_sint }
+	);
+	if not dlopen then return nil, "dlopen(): " .. tostring(e) end;
+	local dlsym;
+	dlsym, e = dl.load(
+		"", "dlsym", dl.ffi_type_pointer,
+		{ dl.ffi_type_pointer, dl.ffi_type_pointer }
+	);
+	if not dlsym then return nil, "dlsym(): " .. tostring(e) end;
+	local dlclose;
+	dlclose, e = dl.load(
+		"", "dlclose", dl.ffi_type_sint,
+		{ dl.ffi_type_pointer }
+	);
+	if not dlclose then return nil, "dlclose(): " .. tostring(e) end;
+	local dlerror;
+	dlerror, e = dl.load(
+		"", "dlerror", dl.ffi_type_pointer,
+		{ }
+	);
+	if not dlerror then return nil, "dlerror(): " .. tostring(e) end;
+	local dll, e;
+	if lib == "" then lib = dl.NULL end;
+	dll, e = dlopen(lib, 2);
+	if not dll then return nil, "lib opening: " .. tostring(e) end;
+	if dll == dl.NULL then
+		e = dl.dlffi_Pointer(dlerror()):tostring();
+		return nil, "lib opening failed: " .. tostring(e);
+	end;
+	local sym;
+	sym, e = dlsym(dll, name);
+	if not sym then return nil, "symbol loading: " .. tostring(e) end;
+	if sym == dl.NULL then return nil, "symbol loading failed" end;
+	dlclose(dll);
+	local o = {};
+	o.symbol = sym;
+	local struct;
+	struct, e = Dlffi_t:new("main", { ffitype });
+	if not struct then return nil, "Dlffi_t:new(): " .. tostring(e) end;
+	o.struct = struct;
+	local mt = {};
+	mt.__call = function(t)
+		return dl.type_element(t.symbol, t.struct["main"], 1);
+	end;
+	return setmetatable(o, mt);
+end;
+dl.loadsym = loadsym;
+-- }}} loadsym()
 
 -- {{{ dlffi_Pointer() <-> rawdlffi_Pointer()
 local rawdlffi_Pointer = dl.dlffi_Pointer;
