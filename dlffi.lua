@@ -405,7 +405,9 @@ local proxy_string = function(t, ...)
 	end;
 	local r, e = dl.dlffi_Pointer(t.symbol(...), gc == true);
 	if not r then return nil, e end;
-	if gc and (type(gc) ~= "boolean") then r:set_gc(gc) end;
+	if gc and (type(gc) ~= "boolean") then
+		r:set_gc(gc);
+	end;
 	return r:tostring();
 end;
 Header.proxy_string = proxy_string;
@@ -418,20 +420,17 @@ Header.proxy_string = proxy_string;
 --	lookup	- table to look for GC
 --	call	- function to call instead of symbol
 local proxy = function(symbol, inherit, gc, lookup, call)
-	local o = {};
 	if type(gc) ~= "string" then
 		-- lookup is not needed
 		lookup = nil;
 	end;
-	local mt = {
+	local o = {
 		["symbol"]	= symbol,
 		["inherit"]	= inherit,
 		["gc"]		= gc,
 		["lookup"]	= lookup,
 	};
-	mt["__index"] = mt;
-	mt["__call"] = call;
-	return setmetatable(o, mt);
+	return setmetatable(o, { ["__call"] = call });
 end;
 Header.proxy = proxy;
 -- }}} Header.proxy()

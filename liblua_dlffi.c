@@ -65,45 +65,37 @@ int type_push(lua_State *L, void *o, ffi_type *t)
 		lua_pushnumber(L, *(double *)o);
 	} else if (t == &ffi_type_longdouble) {
 		lua_pushnumber(L, *(long double *)o);
-	} else if (
-		t == &ffi_type_slong ||
-		t == &ffi_type_ulong
-	) {
-		lua_pushinteger(L, *(long *)o);
-	} else if (
-		t == &ffi_type_sint ||
-		t == &ffi_type_uint
-	) {
-		lua_pushinteger(L, *(int *)o);
-	} else if (
-		t == &ffi_type_schar ||
-		t == &ffi_type_uchar
-	) {
-		lua_pushinteger(L, *(char *)o);
-	} else if (
-		t == &ffi_type_sshort ||
-		t == &ffi_type_ushort
-	) {
-		lua_pushinteger(L, *(short *)o);
-	} else if (
-		t == &ffi_type_uint64 ||
-		t == &ffi_type_sint64
-	) {
+	} else if (t == &ffi_type_ulong) {
+		lua_pushinteger(L, *(unsigned long *)o);
+	} else if (t == &ffi_type_slong) {
+		lua_pushinteger(L, *(signed long *)o);
+	} else if (t == &ffi_type_uint) {
+		lua_pushinteger(L, *(unsigned int *)o);
+	} else if (t == &ffi_type_sint) {
+		lua_pushinteger(L, *(signed int *)o);
+	} else if (t == &ffi_type_uchar) {
+		lua_pushinteger(L, *(unsigned char *)o);
+	} else if (t == &ffi_type_schar) {
+		lua_pushinteger(L, *(signed char *)o);
+	} else if (t == &ffi_type_ushort) {
+		lua_pushinteger(L, *(unsigned short *)o);
+	} else if (t == &ffi_type_sshort) {
+		lua_pushinteger(L, *(signed short *)o);
+	} else if (t == &ffi_type_uint64) {
+		lua_pushinteger(L, *(u_int64_t *)o);
+	} else if (t == &ffi_type_sint64) {
 		lua_pushinteger(L, *(int64_t *)o);
-	} else if (
-		t == &ffi_type_uint32 ||
-		t == &ffi_type_sint32
-	) {
+	} else if (t == &ffi_type_uint32) {
+		lua_pushinteger(L, *(u_int32_t *)o);
+	} else if (t == &ffi_type_sint32) {
 		lua_pushinteger(L, *(int32_t *)o);
-	} else if (
-		t == &ffi_type_uint16 ||
-		t == &ffi_type_sint16
-	) {
+	} else if (t == &ffi_type_uint16) {
+		lua_pushinteger(L, *(u_int16_t *)o);
+	} else if (t == &ffi_type_sint16) {
 		lua_pushinteger(L, *(int16_t *)o);
-	} else if (
-		t == &ffi_type_uint8 ||
-		t == &ffi_type_sint8
-	) {
+	} else if (t == &ffi_type_uint8) {
+		lua_pushinteger(L, *(u_int8_t *)o);
+	} else if (t == &ffi_type_sint8) {
 		lua_pushinteger(L, *(int8_t *)o);
 	} else {
 		// unknown structure, create dlffi_Pointer
