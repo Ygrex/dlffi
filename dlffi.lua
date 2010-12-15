@@ -304,6 +304,8 @@ end;
 -- }}} Dlffi
 
 -- {{{ Dlffi_t
+
+-- {{{ Dlffi_t:new(...) - constructor
 function Dlffi_t:new(k, v)
 	local o = {
 		-- table for FFI structures
@@ -367,18 +369,49 @@ function Dlffi_t:new(k, v)
 		end;
 	end;
 	rawset(o, "new", self.malloc);
+	rawset(o, "get", self.get);
 	return o;
 end;
+-- }}} Dlffi_t:new()
 
--- allocate buffer for named FFI type
+-- {{{ Dlffi_t:malloc(...) - allocate buffer for named FFI type
 function Dlffi_t:malloc(name, gc)
 	if type(name) == "string" then name = self[name] end;
 	return dl.dlffi_Pointer(dl.sizeof(name), gc);
 end;
+-- }}} Dlffi_t:malloc()
+
+-- {{{ Dlffi_t:get() - type_element wrapper
+function Dlffi_t:get(name, obj, num)
+	if type(obj) == "table" then
+		return self:get(name, cast_table(self.get, obj), num);
+	end;
+	if type(name) == "string" then name = self[name] end;
+	return dl.type_element(obj, name, num);
+end;
+-- }}} Dlffi_t:get()
+
 -- }}} Dlffi_t
 
 -- {{{ Header
 Header = {};
+
+-- {{{ proxy_like(...)
+local proxy_like;
+proxy_like = function(symbol, obj)
+	if type(symbol) ~= "table" then return obj end;
+	if symbol.lookup then
+		symbol.gc = symbol.lookup[symbol.gc];
+		symbol.lookup = nil;
+	end;
+	return Dlffi:new(
+		symbol.inherit,
+		obj,
+		symbol.gc
+	);
+end;
+Header.proxy_like = proxy_like;
+-- }}} proxy_like()
 
 -- {{{ proxy_call(...)
 local proxy_call = function(t, ...)
@@ -452,12 +485,16 @@ local proxify = function(symbol, proto, lib)
 		local api = {};
 		for i = 1, #inherit, 1 do
 			local v = inherit[i];
-			local t = lib[v];
-			if not t then
-				t = {};
-				lib[v] = t;
+			if type(v) == "table" then
+				table.insert(api, v);
+			else
+				local t = lib[v];
+				if not t then
+					t = {};
+					lib[v] = t;
+				end;
+				table.insert(api, t);
 			end;
-			table.insert(api, t);
 		end;
 		return proxy(symbol, api, gc, root, proxy_call);
 	end;
@@ -593,9 +630,43 @@ Header.loadlib = loadlib;
 -- }}} Header.loadlib()
 -- }}} Header
 
+-- {{{ empty(...) - is object is empty
+--	obj	- object to test
+local empty;
+empty = function (obj)
+	if not obj then return true end;
+	if obj == dlffi.NULL then return true end;
+	if type(obj) == "table" then return empty(obj._val) end;
+	return false;
+end;
+-- }}} empty();
+
+-- {{{ destroy(...)
+--	obj	- object to destroy
+--	call	- whether call gc
+local function destroy(obj, call)
+	if type(obj) ~= "table" then return end;
+	local mt = obj._gc;
+	if not mt then return end;
+	mt = getmetatable(mt);
+	if not mt then return end;
+	if call then
+		local gc = mt.__gc;
+		if not gc then return end;
+		gc();
+	end;
+	mt.__gc = nil;
+	obj._gc = nil;
+	setmetatable(obj, {});
+	obj._val = nil;
+end;
+-- }}} destroy()
+
 dl.Dlffi = Dlffi;
 dl.Dlffi_t = Dlffi_t;
 dl.cast_table = cast_table;
 dl.Header = Header;
+dl.empty = empty;
+dl.destroy = destroy;
 return dl;
 
