@@ -214,6 +214,9 @@ dl.loadsym = loadsym;
 -- }}} loadsym()
 
 -- {{{ dlffi_Pointer() <-> rawdlffi_Pointer()
+--	accepts tables and strings:
+--	table:	cast and call again
+--	string:	duplicate \0-terminated Lua string and call rawdlffi_Pointer
 local rawdlffi_Pointer = dl.dlffi_Pointer;
 dl.rawdlffi_Pointer = rawdlffi_Pointer;
 local dlffi_Pointer = function(p, ...)
@@ -370,6 +373,7 @@ function Dlffi_t:new(k, v)
 	end;
 	rawset(o, "new", self.malloc);
 	rawset(o, "get", self.get);
+	rawset(o, "put", self.put);
 	return o;
 end;
 -- }}} Dlffi_t:new()
@@ -390,6 +394,16 @@ function Dlffi_t:get(name, obj, num)
 	return dl.type_element(obj, name, num);
 end;
 -- }}} Dlffi_t:get()
+
+-- {{{ Dlffi_t:put() - type_element wrapper
+function Dlffi_t:put(name, obj, num, val)
+	if type(obj) == "table" then
+		return self:put(name, cast_table(self.get, obj), num, val);
+	end;
+	if type(name) == "string" then name = self[name] end;
+	return dl.type_element(obj, name, num, val);
+end;
+-- }}} Dlffi_t:put()
 
 -- }}} Dlffi_t
 
