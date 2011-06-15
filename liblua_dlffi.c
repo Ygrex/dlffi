@@ -384,53 +384,25 @@ static void dlffi_closure_run(
 	int top = lua_gettop(o->L);
 	if (lua_checkstack(o->L, 1 + cif->nargs) == 0) return;
 	lua_rawgeti(o->L, LUA_REGISTRYINDEX, o->ref);
-	unsigned i;
-	for (i = 0; i < cif->nargs; i++) {
-		void *t = o->cif.arg_types[i];
-		if (t == &ffi_type_pointer) {
-			lua_pushlightuserdata(o->L, *(void **)(argv[i]));
-		} else if (t == &ffi_type_void) {
-			lua_pushnil(o->L);
-		} else if (t == &ffi_type_float) {
-			lua_pushnumber(o->L, *(float *)(argv[i]));
-		} else if (t == &ffi_type_double) {
-			lua_pushnumber(o->L, *(double *)(argv[i]));
-		} else if (t == &ffi_type_longdouble) {
-			lua_pushnumber(o->L, *(long double *)(argv[i]));
-		} else if (
-			t == &ffi_type_slong ||
-			t == &ffi_type_ulong
-		) {
-			lua_pushinteger(o->L, *(long *)(argv[i]));
-		} else if (
-			t == &ffi_type_sint ||
-			t == &ffi_type_uint
-		) {
-			lua_pushinteger(o->L, *(int *)(argv[i]));
-		} else if (
-			t == &ffi_type_schar ||
-			t == &ffi_type_uchar
-		) {
-			lua_pushinteger(o->L, *(char *)(argv[i]));
-		} else if (
-			t == &ffi_type_sshort ||
-			t == &ffi_type_ushort
-		) {
-			lua_pushinteger(o->L, *(short *)(argv[i]));
-		} else {
-			lua_pushlightuserdata(o->L, argv[i]);
-		}
+	unsigned i = 0;
+	for (; i < cif->nargs; i++) {
+		if (! type_push(o->L, argv[i], o->cif.arg_types[i])) {
+			i = (unsigned)-1;
+			break;
+		};
 	}
 	int r;
-	if (o->type == &ffi_type_void)
-		r = lua_pcall(o->L, cif->nargs, 0, 0);
-	else {
-		bzero(ret, o->type->size);
-		r = lua_pcall(o->L, cif->nargs, 1, 0);
-	}
-	if ((r == 0) && (o->type != &ffi_type_void)) {
-		// no errors and function has returned something
-		type_write(o->L, -1, o->type, ret, o);
+	if (i != (unsigned)-1) {
+		if (o->type == &ffi_type_void)
+			r = lua_pcall(o->L, cif->nargs, 0, 0);
+		else {
+			bzero(ret, o->type->size);
+			r = lua_pcall(o->L, cif->nargs, 1, 0);
+		}
+		if ((r == 0) && (o->type != &ffi_type_void)) {
+			// no errors and function has returned something
+			type_write(o->L, -1, o->type, ret, o);
+		}
 	}
 	lua_settop(o->L, top);
 }
