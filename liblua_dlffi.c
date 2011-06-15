@@ -496,9 +496,17 @@ static int l_dlffi_create(lua_State *L) {
 static int l_dlffi_load(lua_State *L) {
 	size_t i;
 	if (lua_type(L, 1) == LUA_TFUNCTION) return l_dlffi_create(L);
+	const char *fun;
+	lua_settop(L, 5);
+	if (! lua_checkstack(L, 7)) return 0;
+	if (lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
+		lua_pushstring(L, "");
+		lua_insert(L, 1);
+		fun = NULL;
+	} else {
+		fun = luaL_checkstring(L, 2);
+	}
 	const char *lib = luaL_checkstring(L, 1);
-	const char *fun = luaL_checkstring(L, 2);
-	if (lua_checkstack(L, 5) == 0) return 0;
 	int ref_table;
 	if (lua_type(L, 5) == LUA_TNIL) {
 		ref_table = LUA_REFNIL;
@@ -527,7 +535,11 @@ static int l_dlffi_load(lua_State *L) {
 		return 2;
 	}
 	dlerror();
-	o->dlsym = dlsym(o->dlhdl, fun);
+	if (fun) {
+		o->dlsym = dlsym(o->dlhdl, fun);
+	} else {
+		o->dlsym = lua_touserdata(L, 2);
+	}
 	char *e;
 	if ((e = dlerror()) != NULL) {
 		lua_pushnil(L);
@@ -538,8 +550,7 @@ static int l_dlffi_load(lua_State *L) {
 	o->type = lua_touserdata(L, 3);
 	if (! o->type) {
 		lua_pushnil(L);
-		lua_pushstring(L,
-			"Incorrect return value FFI type specified");
+		lua_pushstring(L, "Incorrect return value FFI type specified");
 		return 2;
 	}
 	/* iterate through argument FFI types */
