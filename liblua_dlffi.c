@@ -46,7 +46,7 @@ typedef struct dlffi_Function {
 /* {{{ dlffi_Pointer *dlffi_check_Pointer(lua_State *L, int idx)
 	check if the indexed value is of (void **)
 */
-inline dlffi_Pointer *dlffi_check_Pointer(lua_State *L, int idx) {
+dlffi_Pointer *dlffi_check_Pointer(lua_State *L, int idx) {
 	return (dlffi_Pointer *)luaL_checkudata(L, idx, "dlffi_Pointer");
 }
 /* }}} dlffi_check_Pointer */
@@ -113,7 +113,7 @@ int type_push(lua_State *L, void *o, ffi_type *t)
 /* }}} type_push */
 
 // {{{ write_value(void *dst, void *src, size_t dst_size, size_t src_size)
-inline void write_value(
+void write_value(
 	void *dst, void *src, size_t dst_size, size_t src_size
 ) {
 	bzero(dst, dst_size);
@@ -136,7 +136,7 @@ inline void write_value(
 //	dst	- allocated buffer for the value
 //	func	- dlffi_Function of which aruments are being parsed, if any
 //	Return: NULL on error or some invalid pointer on success
-inline void *type_write(
+void *type_write(
 	lua_State *L,
 	int idx,
 	ffi_type *type,
@@ -596,7 +596,7 @@ static int l_dlffi_load(lua_State *L) {
 /* {{{ dlffi_Function *dlffi_check_Function(lua_State *L)
 	check if the bottom value is of (dlffi_Function *)
 */
-inline dlffi_Function *dlffi_check_Function(lua_State *L) {
+dlffi_Function *dlffi_check_Function(lua_State *L) {
 	return (dlffi_Function *)luaL_checkudata(L, 1, "dlffi_Function");
 }
 /* }}} dlffi_check_Function */
@@ -878,6 +878,7 @@ static int l_dlffi_sizeof(lua_State *L) {
 	case LUA_TLIGHTUSERDATA:
 		if (lua_checkstack(L, 1) == 0) return 0;
 		p = lua_touserdata(L, 1);
+		[[fallthrough]];
 	case LUA_TUSERDATA:
 		if (p == NULL) {
 			if (lua_checkstack(L, 1) == 0) return 0;
@@ -913,7 +914,7 @@ static int l_dlffi_sizeof(lua_State *L) {
 }
 /* }}} dlffi_sizeof */
 
-static const struct luaL_reg liblua_dlffi [] = {
+static const struct luaL_Reg liblua_dlffi [] = {
 	{"type_init", l_dlffi_type_init},
 	{"type_offset", l_dlffi_type_offset},
 	{"type_element", l_dlffi_type_element},
@@ -924,11 +925,11 @@ static const struct luaL_reg liblua_dlffi [] = {
 	{NULL, NULL}
 };
 
-static const struct luaL_reg liblua_dlffi_m [] = {
+static const struct luaL_Reg liblua_dlffi_m [] = {
 	{NULL, NULL}
 };
 
-static const struct luaL_reg liblua_dlffi_Pointer_m [] = {
+static const struct luaL_Reg liblua_dlffi_Pointer_m [] = {
 	{"index", l_dlffi_Pointer_index},
 	{"tostring", l_dlffi_Pointer_tostring},
 	{"set_gc", l_dlffi_Pointer_set_gc},
@@ -948,7 +949,7 @@ int luaopen_liblua_dlffi(lua_State *L) {
 	lua_pushstring(L, "__call");
 	lua_pushcfunction(L, dlffi_run);
 	lua_settable(L, -3);
-	luaL_register(L, NULL, liblua_dlffi_m);
+	luaL_setfuncs(L, liblua_dlffi_m, 0);
 	/* }}} dlffi_Function metatable */
 	/* {{{ dlffi_Pointer metatable */
 	luaL_newmetatable(L, "dlffi_Pointer");
@@ -964,10 +965,11 @@ int luaopen_liblua_dlffi(lua_State *L) {
 	lua_pushstring(L, "__gc");
 	lua_pushcfunction(L, dlffi_Pointer_gc);
 	lua_settable(L, -3);
-	luaL_register(L, NULL, liblua_dlffi_Pointer_m);
+	luaL_setfuncs(L, liblua_dlffi_Pointer_m, 0);
 	/* }}} dlffi_Pointer metatable */
 	}
-	luaL_register(L, "dlffi", liblua_dlffi);
+	lua_newtable(L);
+	luaL_setfuncs(L, liblua_dlffi, 0);
 	/* {{{ ffi constants */
 	lua_pushlightuserdata(L, &ffi_type_uint8);
 	lua_setfield(L, -2, "ffi_type_uint8");

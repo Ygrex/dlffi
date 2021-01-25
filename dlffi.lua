@@ -66,7 +66,7 @@ local multireturn = function(proxy, ...)
 	end;
 	-- }}} substitute values with pointers
 	-- jump to original symbol
-	local retval, e = symbol(unpack(new_val));
+	local retval, e = symbol(table.unpack(new_val));
 	if e then return false, e end;
 	-- get returned values
 	local retvals = {};
@@ -89,7 +89,7 @@ local multireturn = function(proxy, ...)
 		table.insert(retvals, e);
 		end; -- }}} unwrap value
 	end;
-	return true, retval, unpack(retvals);
+	return true, retval, table.unpack(retvals);
 end;
 -- }}} proxy for multi-return functions
 
@@ -275,7 +275,7 @@ function Dlffi:new(api, init, gc, spec)
 		if not is_callable(gc) then
 			return nil, "GC must be a function";
 		end;
-		o._gc = newproxy(true);
+		o._gc = setmetatable({}, {__gc = true});
 		getmetatable(o._gc).__gc = function()
 			local val = o._val;
 			if (val ~= nil) and (val ~= dl.NULL) then gc(val) end;
@@ -317,9 +317,8 @@ function Dlffi_t:new(k, v)
 		-- or/and regular FFI types
 		-- (GC-less values)
 		tables = {},
-		gc = newproxy(true),
+		gc = setmetatable({}, {__gc = true}),
 	};
-	if o.gc == nil then return nil, "newproxy() failed" end;
 	-- {{{ GC
 	getmetatable(o.gc).__gc = function()
 		o.tables = nil;
@@ -621,7 +620,7 @@ local loadlib = function (header, lib)
 			local f;
 			-- probe all given libraries
 			for i = 1, #libs, 1 do
-				f = dl.load(libs[i], unpack(v));
+				f = dl.load(libs[i], table.unpack(v));
 				if f then break end;
 			end;
 			if not f then
@@ -649,7 +648,7 @@ Header.loadlib = loadlib;
 local empty;
 empty = function (obj)
 	if not obj then return true end;
-	if obj == dlffi.NULL then return true end;
+	if obj == dl.NULL then return true end;
 	if type(obj) == "table" then return empty(obj._val) end;
 	return false;
 end;

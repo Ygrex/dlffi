@@ -1,4 +1,4 @@
-local LIBMYSQL = "libmysqlclient.so.16";
+local LIBMYSQL = "libmysqlclient.so";
 
 -- make 5.1 and 5.2 compatibility
 local unpack = unpack;

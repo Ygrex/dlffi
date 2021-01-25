@@ -1,22 +1,20 @@
 # location
-LUA_VERSION=5.1
+LUA_VERSION=5.4
 PREFIX=/usr/local
 DEST_LIBS=$(PREFIX)/lib/lua/$(LUA_VERSION)
 INCLUDES=/usr/include/lua$(LUA_VERSION)
-LUA_CFLAGS=-O2 -fPIC -I$(INCLUDES) -g
-# uncomment the following line to declare lua_objlen in LUA 5.2
-#LUA_CFLAGS=-O2 -fPIC -Dlua_objlen=lua_rawlen
+LUA_CFLAGS=-O2 -fPIC -I$(INCLUDES) -g -Dlua_objlen=lua_rawlen
 LUA_LDFLAGS=-O -shared -fPIC
 
 #####
 
 all: compile
-CA=-Wall -Wextra
+CA=-Wall -Wextra -Wno-return-local-addr
 compile: dlffi
 
 dlffi: liblua_dlffi.c
 	$(CC) $(CFLAGS) $(CA) $(LUA_CFLAGS) -c liblua_dlffi.c -o liblua_dlffi.o
-	$(CC) $(CFLAGS) $(CA) $(LUA_LDFLAGS) -ldl -lffi -o liblua_dlffi.so liblua_dlffi.o
+	$(CC) $(CFLAGS) $(CA) $(LUA_LDFLAGS) -o liblua_dlffi.so liblua_dlffi.o -ldl `pkg-config --cflags --libs lua$(LUA_VERSION) libffi`
 
 clean:
 	rm liblua_dlffi.o
